@@ -48,9 +48,9 @@ CSS = """
 .team-total       { font-size:1.25rem; font-weight:700; color:#0D4E73; text-align:right; }
 .team-total small { font-size:0.62rem; color:#888; display:block; }
 
-.app-chips { display:flex; gap:5px; padding:8px 12px;
-             flex-wrap:wrap; border-bottom:1px solid #f0f0f0; }
-.app-chip  { flex:1; min-width:56px; background:#f7f8fc; border-radius:8px;
+.app-chips { display:grid; grid-template-columns:repeat(3,1fr); gap:6px;
+             padding:8px 12px; border-bottom:1px solid #f0f0f0; }
+.app-chip  { background:#f7f8fc; border-radius:8px;
              padding:5px 3px; text-align:center; }
 .app-chip.start { background:#D6EAF3; border:1.5px solid #2C7FA6; }
 .app-chip .app-name { font-size:0.68rem; font-weight:600; color:#15608A; display:block; }
