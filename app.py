@@ -304,9 +304,13 @@ def _calc_teams(teams, athletes, score_lookup, counting, score_mode="summe",
 
 
 def _show_team_ranking(teams, athletes, score_lookup, cfg, counting, search):
-    score_mode = cfg.get("team_score_mode", "summe")
+    score_mode    = cfg.get("team_score_mode", "summe")
+    lock          = cfg.get("display_lock_rotations", "false") == "true"
+    max_rotations = 5 if lock else 6
 
     # ── Filter ─────────────────────────────────────────────────────────────
+    if lock:
+        st.info("ℹ️ Endresultate werden nach der Siegerehrung freigeschaltet.")
     abt_vals = sorted(set(int(t.get("abteilung", 1)) for t in teams))
     fc1, fc2 = st.columns(2)
     sel_abt = fc1.selectbox(
@@ -316,7 +320,7 @@ def _show_team_ranking(teams, athletes, score_lookup, cfg, counting, search):
     )
     sel_rot = fc2.selectbox(
         "Zwischenstand",
-        ["Alle Rotationen"] + [f"Nach Rotation {r}" for r in range(1, 7)],
+        ["Alle Rotationen"] + [f"Nach Rotation {r}" for r in range(1, max_rotations + 1)],
         key="team_rot_filter",
     )
 
