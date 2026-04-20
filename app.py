@@ -142,6 +142,10 @@ def _final(s):
     return s.get("final_score") if s else None
 
 
+def _apparatus_for_rotations(start_apparatus, num_rotations):
+    return {((start_apparatus - 1 + r) % 6) + 1 for r in range(num_rotations)}
+
+
 def _enrich_scores(scores, num_e):
     """Berechnet e_wert und final_score in-place. NIE 10-E verwenden."""
     for s in scores:
@@ -210,14 +214,21 @@ def _team_matches(team, team_athletes, search):
 
 # ── Tab: Teams ─────────────────────────────────────────────────────────────────
 
-def _calc_teams(teams, athletes, score_lookup, counting, score_mode="summe"):
+def _calc_teams(teams, athletes, score_lookup, counting, score_mode="summe",
+                num_rotations=None):
     team_results = []
     for team in teams:
         start_app    = team.get("start_apparatus", 1)
         team_athletes = [a for a in athletes if a["team_id"] == team["id"]]
         app_data = {}
+        allowed = (_apparatus_for_rotations(start_app, num_rotations)
+                   if num_rotations is not None else None)
 
         for app_id in APP_IDS:
+            if allowed is not None and app_id not in allowed:
+                app_data[app_id] = {"rows": [], "team_total": None,
+                                    "is_start": app_id == start_app}
+                continue
             scored = [
                 a for a in team_athletes
                 if _final(score_lookup.get((a["id"], app_id))) is not None
@@ -293,8 +304,33 @@ def _calc_teams(teams, athletes, score_lookup, counting, score_mode="summe"):
 
 
 def _show_team_ranking(teams, athletes, score_lookup, cfg, counting, search):
-    score_mode   = cfg.get("team_score_mode", "summe")
-    team_results = _calc_teams(teams, athletes, score_lookup, counting, score_mode)
+    score_mode = cfg.get("team_score_mode", "summe")
+
+    # ── Filter ─────────────────────────────────────────────────────────────
+    abt_vals = sorted(set(int(t.get("abteilung", 1)) for t in teams))
+    fc1, fc2 = st.columns(2)
+    sel_abt = fc1.selectbox(
+        "Abteilung",
+        ["Alle"] + [str(v) for v in abt_vals],
+        key="team_abt_filter",
+    )
+    sel_rot = fc2.selectbox(
+        "Zwischenstand",
+        ["Alle Rotationen"] + [f"Nach Rotation {r}" for r in range(1, 7)],
+        key="team_rot_filter",
+    )
+
+    teams_filtered = (
+        [t for t in teams if str(t.get("abteilung", 1)) == sel_abt]
+        if sel_abt != "Alle" else teams
+    )
+    num_rotations = (
+        int(sel_rot.split()[-1]) if sel_rot != "Alle Rotationen" else None
+    )
+    # ───────────────────────────────────────────────────────────────────────
+
+    team_results = _calc_teams(teams_filtered, athletes, score_lookup, counting,
+                               score_mode, num_rotations)
     if not team_results:
         st.markdown("<div class='rl-wrap no-data'>Noch keine Daten.</div>",
                     unsafe_allow_html=True)
