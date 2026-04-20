@@ -721,5 +721,5 @@ elif view == "Gerät":
 elif view == "Live":
     _show_live(cid, num_e)
 
-now = pd.Timestamp.now().strftime("%H:%M:%S")
+now = pd.Timestamp.now(tz="Europe/Zurich").strftime("%H:%M:%S")
 st.markdown(f"<div class='stand'>Stand: {now}</div>", unsafe_allow_html=True)
