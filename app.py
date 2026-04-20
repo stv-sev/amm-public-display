@@ -678,7 +678,7 @@ st.markdown(f"""
 
 search = st.text_input(
     "🔍 Suchen (Name, Vorname, Verein, Team...)", "",
-    placeholder="z.B. Muster, STV Rain, Aargau...",
+    placeholder="",
     key="rl_search",
 ).strip().lower()
 
