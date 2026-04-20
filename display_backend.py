@@ -1,6 +1,6 @@
 """
-display_backend.py – Liest ausschliesslich von Supabase (read-only)
-Keine SQLite-Abhängigkeit.
+display_backend.py – Supabase-only Datenzugriff (read-only, kein SQLite)
+Deployment: Streamlit Cloud. Secrets: SUPABASE_URL, SUPABASE_KEY
 """
 import streamlit as st
 
@@ -12,76 +12,92 @@ APP_SHORT = {1:"Bo",    2:"Pf",    3:"Ri",    4:"Sp",     5:"Ba",    6:"Re"}
 @st.cache_resource
 def _sb():
     from supabase import create_client
-    url = st.secrets.get("SUPABASE_URL", "")
-    key = st.secrets.get("SUPABASE_KEY", "")
-    if not url or not key:
-        raise RuntimeError("SUPABASE_URL und SUPABASE_KEY müssen in secrets.toml konfiguriert sein.")
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
 
-@st.cache_data(ttl=8)  # Cache 8s (refresh every 10s)
+@st.cache_data(ttl=5)
 def get_competitions():
     try:
-        r = _sb().table("competitions").select("*").order("id", desc=True).execute()
-        return r.data
+        return _sb().table("competitions").select("*").order("id", desc=True).execute().data
     except Exception:
         return []
 
 
-@st.cache_data(ttl=8)
-def get_data_for_comp(cid: int) -> dict | None:
-    """Fetch all data for one competition and compute scores."""
+@st.cache_data(ttl=5)
+def get_config(cid):
+    try:
+        rows = _sb().table("config").select("key,value").eq("competition_id", cid).execute().data
+        return {r["key"]: r["value"] for r in rows}
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=5)
+def get_teams(cid):
+    try:
+        return _sb().table("teams").select("*").eq("competition_id", cid).execute().data
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=5)
+def get_athletes(cid):
+    try:
+        return _sb().table("athletes").select("*").eq("competition_id", cid).execute().data
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=5)
+def get_scores(cid):
+    """Scores mit Athleten- und Team-Infos angereichert (für Teams/Einzel/Gerät-Tab)."""
     try:
         sb = _sb()
-        cfg_rows = sb.table("config").select("*").eq("competition_id", cid).execute().data
-        cfg      = {r["key"]: r["value"] for r in cfg_rows}
-        num_e    = int(cfg.get("num_e_scores", 3))
-
-        athletes = sb.table("athletes").select("*").eq("competition_id", cid).execute().data
-        teams    = sb.table("teams").select("*").eq("competition_id", cid).execute().data
         scores   = sb.table("scores").select("*").eq("competition_id", cid).execute().data
+        athletes = (sb.table("athletes")
+                      .select("id,first_name,last_name,club,team_id,category,year_of_birth")
+                      .eq("competition_id", cid).execute().data)
+        teams    = (sb.table("teams")
+                      .select("id,name,abbreviation")
+                      .eq("competition_id", cid).execute().data)
+        _enrich(scores, athletes, teams)
+        return scores
+    except Exception:
+        return []
 
-        if not athletes or not scores:
-            return None
 
-        team_map = {t["id"]: t for t in teams}
-        ath_map  = {a["id"]: a for a in athletes}
+def get_live_scores(cid, limit=10):
+    """Letzte Noten – kein Cache, direkt von Supabase (für Live-Tab)."""
+    try:
+        sb = _sb()
+        scores   = (sb.table("scores").select("*")
+                      .eq("competition_id", cid)
+                      .order("updated_at", desc=True)
+                      .limit(limit).execute().data)
+        athletes = (sb.table("athletes")
+                      .select("id,first_name,last_name,club,team_id,category")
+                      .eq("competition_id", cid).execute().data)
+        teams    = (sb.table("teams")
+                      .select("id,name,abbreviation")
+                      .eq("competition_id", cid).execute().data)
+        _enrich(scores, athletes, teams)
+        return scores
+    except Exception:
+        return []
 
-        # Compute final scores
-        score_lookup = {}  # aid -> {app_id -> {d,e,p,b,final}}
-        for s in scores:
-            aid, app = s["athlete_id"], s["apparatus_id"]
-            d  = s.get("d_score") or 0
-            p  = s.get("penalty") or 0
-            b  = s.get("bonus")   or 0
-            ev = [s.get(f"e{i}") for i in range(1, 6) if s.get(f"e{i}") is not None][:num_e]
-            if ev:
-                e_avg = (sum(ev)-max(ev)-min(ev))/(len(ev)-2) if len(ev) >= 3 else sum(ev)/len(ev)
-            else:
-                e_avg = 0
-            final = round(d + e_avg - p + b, 3) if (d or e_avg) else None
-            score_lookup.setdefault(aid, {})[app] = {
-                "d": d, "e": round(e_avg, 3), "p": p, "b": b, "final": final
-            }
 
-        # Athlete totals
-        ath_totals = {
-            a["id"]: round(
-                sum(v["final"] for v in score_lookup.get(a["id"], {}).values()
-                    if v["final"] is not None), 3)
-            for a in athletes
-        }
-
-        return {
-            "cfg":          cfg,
-            "athletes":     athletes,
-            "teams":        teams,
-            "team_map":     team_map,
-            "ath_map":      ath_map,
-            "score_lookup": score_lookup,
-            "ath_totals":   ath_totals,
-            "num_e":        num_e,
-        }
-    except Exception as e:
-        st.error(f"Datenbankfehler: {e}")
-        return None
+def _enrich(scores, athletes, teams):
+    ath_map  = {a["id"]: a for a in athletes}
+    team_map = {t["id"]: t for t in teams}
+    for s in scores:
+        a = ath_map.get(s["athlete_id"], {})
+        t = team_map.get(a.get("team_id"), {})
+        s["first_name"]    = a.get("first_name", "")
+        s["last_name"]     = a.get("last_name", "")
+        s["club"]          = a.get("club", "")
+        s["category"]      = a.get("category", "")
+        s["year_of_birth"] = a.get("year_of_birth", "")
+        s["team_abbr"]     = t.get("abbreviation", "")
+        s["team_name"]     = t.get("name", "")
