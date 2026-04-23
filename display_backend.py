@@ -68,6 +68,26 @@ def get_scores(cid):
         return []
 
 
+@st.cache_data(ttl=30)
+def get_start_positions(cid: int):
+    try:
+        sb = _sb()
+        r = sb.table("start_positions").select("*").eq("competition_id", cid).execute()
+        return r.data
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=30)
+def get_schedule(cid: int):
+    try:
+        sb = _sb()
+        r = sb.table("schedule").select("*").eq("competition_id", cid).order("id").execute()
+        return r.data
+    except Exception:
+        return []
+
+
 def get_live_scores(cid, limit=10):
     """Letzte Noten – kein Cache, direkt von Supabase (für Live-Tab)."""
     try:

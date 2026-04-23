@@ -14,7 +14,8 @@ st.set_page_config(
 
 from display_backend import (
     _sb, get_competitions, get_config, get_teams, get_athletes,
-    get_scores, get_live_scores, APP_IDS, APP_SHORT, APP_NAMES,
+    get_scores, get_live_scores, get_start_positions, get_schedule,
+    APP_IDS, APP_SHORT, APP_NAMES,
 )
 
 try:
@@ -26,7 +27,7 @@ except ImportError:
 # ── Konstanten ─────────────────────────────────────────────────────────────────
 RANK_COLORS = {1: "#FFD700", 2: "#C0C0C0", 3: "#CD7F32"}
 RANK_MEDAL  = {1: "🥇", 2: "🥈", 3: "🥉"}
-CATEGORIES  = ["EP", "P1", "P2", "P3"]
+CATEGORIES  = ["EP", "EPA", "P1", "P1U9", "P2", "P3", "Coach"]
 
 CSS = """
 <style>
@@ -219,7 +220,8 @@ def _calc_teams(teams, athletes, score_lookup, counting, score_mode="summe",
     team_results = []
     for team in teams:
         start_app    = team.get("start_apparatus", 1)
-        team_athletes = [a for a in athletes if a["team_id"] == team["id"]]
+        team_athletes = [a for a in athletes
+                         if a["team_id"] == team["id"] and a.get("category") != "Coach"]
         app_data = {}
         allowed = (_apparatus_for_rotations(start_app, num_rotations)
                    if num_rotations is not None else None)
@@ -439,6 +441,8 @@ def _show_individual(athletes, score_lookup, search):
 
     rows = []
     for ath in athletes:
+        if ath.get("category") == "Coach":
+            continue
         if cat_filter and ath.get("category") not in cat_filter:
             continue
         if not _ath_matches(ath, search):
@@ -535,7 +539,9 @@ def _show_per_apparatus(all_scores, search):
     app_id      = app_options[sel_name]
     cat_filter  = st.multiselect("Kategorie filtern", CATEGORIES, default=[], key="app_cat")
 
-    scored = [s for s in all_scores if s["apparatus_id"] == app_id and _final(s) is not None]
+    scored = [s for s in all_scores
+              if s["apparatus_id"] == app_id and _final(s) is not None
+              and s.get("category") != "Coach"]
     if cat_filter:
         scored = [s for s in scored if s.get("category") in cat_filter]
     if search:
@@ -657,6 +663,125 @@ def _show_live(cid, num_e):
     st.markdown(html, unsafe_allow_html=True)
 
 
+# ── Tab: Startliste ────────────────────────────────────────────────────────────
+
+def _show_startliste(start_positions, athletes, teams):
+    APP_NAMES_FULL = {1:"Boden", 2:"Pferd", 3:"Ringe", 4:"Sprung", 5:"Barren", 6:"Reck"}
+    abt_vals = sorted(set(int(t.get("abteilung", 1)) for t in teams))
+    if not abt_vals:
+        st.info("Keine Teams / Abteilungen erfasst.")
+        return
+
+    sel_abt = st.radio(
+        "Abteilung", abt_vals,
+        format_func=lambda x: f"{x}. Abteilung",
+        horizontal=True, key="sl_abt",
+    )
+
+    abt_team_ids = {t["id"] for t in teams if int(t.get("abteilung", 1)) == sel_abt}
+    ath_by_id    = {a["id"]: a for a in athletes}
+    team_by_id   = {t["id"]: t for t in teams}
+
+    sp_start = {}
+    for sp in start_positions:
+        if sp.get("rotation") == 1:
+            aid = sp["athlete_id"]
+            if ath_by_id.get(aid, {}).get("team_id") in abt_team_ids:
+                sp_start[aid] = {"apparatus_id": sp["apparatus_id"], "position": sp["position"]}
+
+    for app_id in APP_IDS:
+        turners = [
+            (sp_start[aid], ath_by_id[aid])
+            for aid in sp_start
+            if sp_start[aid]["apparatus_id"] == app_id
+            and ath_by_id.get(aid, {}).get("category") != "Coach"
+        ]
+        if not turners:
+            continue
+        turners.sort(key=lambda x: x[0]["position"])
+
+        teams_starting_here = {t["id"] for t in teams
+                                if t.get("start_apparatus") == app_id and t["id"] in abt_team_ids}
+        coaches = [a for a in athletes
+                   if a.get("team_id") in teams_starting_here and a.get("category") == "Coach"]
+
+        html = (
+            f"<div style='border:1px solid #D6EAF3;border-radius:6px;"
+            f"margin-bottom:16px;overflow:hidden;'>"
+            f"<div style='background:#0D4E73;color:#fff;padding:8px 14px;"
+            f"font-weight:700;font-size:0.92rem;'>{APP_NAMES_FULL[app_id]}</div>"
+            f"<table style='width:100%;border-collapse:collapse;font-size:0.82rem;'>"
+            f"<thead><tr style='background:#D6EAF3;'>"
+            f"<th style='padding:5px 10px;text-align:left;width:36px;'>Pos</th>"
+            f"<th style='padding:5px 10px;text-align:left;'>Team</th>"
+            f"<th style='padding:5px 10px;text-align:left;'>Nachname</th>"
+            f"<th style='padding:5px 10px;text-align:left;'>Vorname</th>"
+            f"<th style='padding:5px 10px;text-align:left;'>Jg</th>"
+            f"<th style='padding:5px 10px;text-align:left;'>Kat.</th>"
+            f"<th style='padding:5px 10px;text-align:left;'>Verein</th>"
+            f"</tr></thead><tbody>"
+        )
+        for sp_info, ath in turners:
+            team      = team_by_id.get(ath.get("team_id"), {})
+            team_abbr = ath.get("team_abbr") or team.get("abbreviation", "")
+            badge = (
+                f"<span style='background:#D6EAF3;color:#15608A;border-radius:4px;"
+                f"padding:1px 6px;font-size:0.72rem;font-weight:600;white-space:nowrap;'>"
+                f"{team_abbr}</span>"
+            ) if team_abbr else ""
+            html += (
+                f"<tr style='border-bottom:1px solid #f0f0f0;'>"
+                f"<td style='padding:5px 10px;color:#15608A;font-weight:600;'>{sp_info['position']}</td>"
+                f"<td style='padding:5px 10px;'>{badge}</td>"
+                f"<td style='padding:5px 10px;font-weight:500;color:#0D4E73;'>{ath.get('last_name','')}</td>"
+                f"<td style='padding:5px 10px;color:#333;'>{ath.get('first_name','')}</td>"
+                f"<td style='padding:5px 10px;color:#666;'>{ath.get('year_of_birth','') or ''}</td>"
+                f"<td style='padding:5px 10px;color:#666;'>{ath.get('category','')}</td>"
+                f"<td style='padding:5px 10px;color:#666;'>{ath.get('club','')}</td>"
+                f"</tr>"
+            )
+        for ath in coaches:
+            team_abbr = ath.get("team_abbr") or team_by_id.get(ath.get("team_id"), {}).get("abbreviation", "")
+            badge = (
+                f"<span style='background:#D6EAF3;color:#15608A;border-radius:4px;"
+                f"padding:1px 6px;font-size:0.72rem;font-weight:600;white-space:nowrap;'>"
+                f"{team_abbr}</span>"
+            ) if team_abbr else ""
+            html += (
+                f"<tr style='border-bottom:1px solid #f0f0f0;font-style:italic;color:#6FAFC9;'>"
+                f"<td style='padding:5px 10px;color:#6FAFC9;font-size:0.72rem;'>Coach</td>"
+                f"<td style='padding:5px 10px;'>{badge}</td>"
+                f"<td style='padding:5px 10px;'>{ath.get('last_name','')}</td>"
+                f"<td style='padding:5px 10px;'>{ath.get('first_name','')}</td>"
+                f"<td style='padding:5px 10px;'></td>"
+                f"<td style='padding:5px 10px;'></td>"
+                f"<td style='padding:5px 10px;'>{ath.get('club','')}</td>"
+                f"</tr>"
+            )
+        html += "</tbody></table></div>"
+        st.markdown(html, unsafe_allow_html=True)
+
+
+# ── Tab: Zeitplan ──────────────────────────────────────────────────────────────
+
+def _show_zeitplan(schedule):
+    if not schedule:
+        st.info("Kein Zeitplan erfasst.")
+        return
+    for entry in schedule:
+        if entry.get("is_highlight"):
+            st.markdown(
+                f"<div style='background:#D6EAF3;padding:8px 12px;border-radius:4px;"
+                f"margin:4px 0;font-weight:bold;color:#0D4E73'>"
+                f"{entry['time_label']} &nbsp;&nbsp; {entry['description']}</div>",
+                unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f"<div style='padding:6px 12px;color:#15608A'>"
+                f"{entry['time_label']} &nbsp;&nbsp; {entry['description']}</div>",
+                unsafe_allow_html=True)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Haupt-Script
 # ══════════════════════════════════════════════════════════════════════════════
@@ -724,10 +849,12 @@ search = st.text_input(
 
 # Tab-Navigation
 if comp_mode == "einzel":
-    nav_items = [("🤸 Einzel", "Einzel"), ("📊 Gerät", "Gerät"), ("⚡ Live", "Live")]
+    nav_items = [("🤸 Einzel", "Einzel"), ("📊 Gerät", "Gerät"), ("⚡ Live", "Live"),
+                 ("📋 Startliste", "Startliste"), ("🕐 Zeitplan", "Zeitplan")]
 else:
     nav_items = [("🏆 Teams", "Teams"), ("🤸 Einzel", "Einzel"),
-                 ("📊 Gerät", "Gerät"), ("⚡ Live", "Live")]
+                 ("📊 Gerät", "Gerät"), ("⚡ Live", "Live"),
+                 ("📋 Startliste", "Startliste"), ("🕐 Zeitplan", "Zeitplan")]
 
 if "rl_view" not in st.session_state:
     st.session_state.rl_view = "Einzel" if comp_mode == "einzel" else "Teams"
@@ -760,6 +887,12 @@ elif view == "Gerät":
     _show_per_apparatus(all_scores, search)
 elif view == "Live":
     _show_live(cid, num_e)
+elif view == "Startliste":
+    start_positions = get_start_positions(cid)
+    _show_startliste(start_positions, athletes, teams)
+elif view == "Zeitplan":
+    schedule = get_schedule(cid)
+    _show_zeitplan(schedule)
 
 now = pd.Timestamp.now(tz="Europe/Zurich").strftime("%H:%M:%S")
 st.markdown(f"<div class='stand'>Stand: {now}</div>", unsafe_allow_html=True)
