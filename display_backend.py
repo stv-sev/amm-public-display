@@ -88,7 +88,7 @@ def get_schedule(cid: int):
         return []
 
 
-def get_live_scores(cid, limit=10):
+def get_live_scores(cid, limit=20):
     """Letzte Noten – kein Cache, direkt von Supabase (für Live-Tab)."""
     try:
         sb = _sb()

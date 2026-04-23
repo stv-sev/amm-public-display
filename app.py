@@ -29,6 +29,35 @@ RANK_COLORS = {1: "#FFD700", 2: "#C0C0C0", 3: "#CD7F32"}
 RANK_MEDAL  = {1: "🥇", 2: "🥈", 3: "🥉"}
 CATEGORIES  = ["EP", "EPA", "P1", "P1U9", "P2", "P3", "Coach"]
 
+TEAM_COLOR_MAP = {
+    "schwarz":     "#1a1a1a",
+    "hellgrau":    "#aaaaaa",
+    "grün":        "#2e8b2e",
+    "limonengrün": "#9acd32",
+    "gelb":        "#f5c400",
+    "orange":      "#e07000",
+    "pink":        "#e6007e",
+    "rot":         "#cc2200",
+    "aqua":        "#00b4b4",
+    "königblau":   "#2255cc",
+    "dunkelblau":  "#0d2f6e",
+    "türkis":      "#00897b",
+}
+
+
+def _team_badge_disp(team):
+    team_name = team.get("name", "")
+    team_abbr = team.get("abbreviation", "")
+    farbe_raw = team_name.split("–")[-1].strip().lower() if "–" in team_name else ""
+    hex_color = TEAM_COLOR_MAP.get(farbe_raw, "#6fafc9")
+    dot = (
+        f"<span style='display:inline-block;width:12px;height:12px;"
+        f"border-radius:3px;background:{hex_color};margin-right:6px;"
+        f"vertical-align:middle'></span>"
+    )
+    label = team_name if team_name else team_abbr
+    return f"{dot}{label}" if label else ""
+
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -600,7 +629,7 @@ def _show_live(cid, num_e):
         unsafe_allow_html=True,
     )
 
-    live = get_live_scores(cid, limit=10)
+    live = get_live_scores(cid, limit=20)
     _enrich_scores(live, num_e)
 
     scored = [s for s in live if _final(s) is not None and s.get("updated_at")]
@@ -665,20 +694,33 @@ def _show_live(cid, num_e):
 
 # ── Tab: Startliste ────────────────────────────────────────────────────────────
 
+def _to_int(val):
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def _show_startliste(start_positions, athletes, teams):
     APP_NAMES_FULL = {1:"Boden", 2:"Pferd", 3:"Ringe", 4:"Sprung", 5:"Barren", 6:"Reck"}
-    abt_vals = sorted(set(int(t.get("abteilung", 1)) for t in teams))
-    if not abt_vals:
+    if not teams:
         st.info("Keine Teams / Abteilungen erfasst.")
         return
 
-    sel_abt = st.radio(
-        "Abteilung", abt_vals,
-        format_func=lambda x: f"{x}. Abteilung",
-        horizontal=True, key="sl_abt",
-    )
+    abt_raw = sorted(set(
+        int(t["abteilung"]) for t in teams if t.get("abteilung") is not None
+    )) if teams else [1, 2]
+    abt_labels  = [f"{a}. Abteilung" for a in abt_raw]
+    abt_int_map = {f"{a}. Abteilung": a for a in abt_raw}
 
-    abt_team_ids = {t["id"] for t in teams if int(t.get("abteilung", 1)) == sel_abt}
+    sel_abt_label = st.selectbox(
+        "Abteilung",
+        options=abt_labels,
+        key="sb_startliste_abt",
+    )
+    sel_abt = abt_int_map.get(sel_abt_label, abt_raw[0] if abt_raw else 1)
+
+    abt_team_ids = {t["id"] for t in teams if _to_int(t.get("abteilung")) == sel_abt}
     ath_by_id    = {a["id"]: a for a in athletes}
     team_by_id   = {t["id"]: t for t in teams}
 
@@ -722,17 +764,12 @@ def _show_startliste(start_positions, athletes, teams):
             f"</tr></thead><tbody>"
         )
         for sp_info, ath in turners:
-            team      = team_by_id.get(ath.get("team_id"), {})
-            team_abbr = ath.get("team_abbr") or team.get("abbreviation", "")
-            badge = (
-                f"<span style='background:#D6EAF3;color:#15608A;border-radius:4px;"
-                f"padding:1px 6px;font-size:0.72rem;font-weight:600;white-space:nowrap;'>"
-                f"{team_abbr}</span>"
-            ) if team_abbr else ""
+            team  = team_by_id.get(ath.get("team_id"), {})
+            badge = _team_badge_disp(team)
             html += (
                 f"<tr style='border-bottom:1px solid #f0f0f0;'>"
                 f"<td style='padding:5px 10px;color:#15608A;font-weight:600;'>{sp_info['position']}</td>"
-                f"<td style='padding:5px 10px;'>{badge}</td>"
+                f"<td style='padding:5px 10px;white-space:nowrap;'>{badge}</td>"
                 f"<td style='padding:5px 10px;font-weight:500;color:#0D4E73;'>{ath.get('last_name','')}</td>"
                 f"<td style='padding:5px 10px;color:#333;'>{ath.get('first_name','')}</td>"
                 f"<td style='padding:5px 10px;color:#666;'>{ath.get('year_of_birth','') or ''}</td>"
@@ -741,16 +778,12 @@ def _show_startliste(start_positions, athletes, teams):
                 f"</tr>"
             )
         for ath in coaches:
-            team_abbr = ath.get("team_abbr") or team_by_id.get(ath.get("team_id"), {}).get("abbreviation", "")
-            badge = (
-                f"<span style='background:#D6EAF3;color:#15608A;border-radius:4px;"
-                f"padding:1px 6px;font-size:0.72rem;font-weight:600;white-space:nowrap;'>"
-                f"{team_abbr}</span>"
-            ) if team_abbr else ""
+            team  = team_by_id.get(ath.get("team_id"), {})
+            badge = _team_badge_disp(team)
             html += (
                 f"<tr style='border-bottom:1px solid #f0f0f0;font-style:italic;color:#6FAFC9;'>"
                 f"<td style='padding:5px 10px;color:#6FAFC9;font-size:0.72rem;'>Coach</td>"
-                f"<td style='padding:5px 10px;'>{badge}</td>"
+                f"<td style='padding:5px 10px;white-space:nowrap;'>{badge}</td>"
                 f"<td style='padding:5px 10px;'>{ath.get('last_name','')}</td>"
                 f"<td style='padding:5px 10px;'>{ath.get('first_name','')}</td>"
                 f"<td style='padding:5px 10px;'></td>"
