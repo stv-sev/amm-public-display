@@ -4,6 +4,8 @@ Deployment: Streamlit Cloud. Secrets: SUPABASE_URL, SUPABASE_KEY
 """
 import streamlit as st
 import pandas as pd
+import requests
+import base64
 
 st.set_page_config(
     page_title="AMM Live Rangliste",
@@ -23,6 +25,20 @@ try:
     HAS_AUTOREFRESH = True
 except ImportError:
     HAS_AUTOREFRESH = False
+
+_LOGO_URL = (
+    "https://raw.githubusercontent.com/stv-sev/amm-public-display/main/"
+    "logo/Turnsport_Aargau_rgb.png"
+)
+
+@st.cache_data(ttl=3600)
+def _load_logo_b64():
+    try:
+        r = requests.get(_LOGO_URL, timeout=5)
+        r.raise_for_status()
+        return base64.b64encode(r.content).decode()
+    except Exception:
+        return None
 
 # ── Konstanten ─────────────────────────────────────────────────────────────────
 RANK_COLORS = {1: "#FFD700", 2: "#C0C0C0", 3: "#CD7F32"}
@@ -866,11 +882,26 @@ event_name = cfg.get("event_name", "Wettkampf")
 location   = cfg.get("event_location", "")
 date       = cfg.get("event_date", "")
 sep        = " · " if location and date else ""
+
+logo_b64 = _load_logo_b64()
+if logo_b64:
+    logo_html = (
+        f"<div style='background:#fff;border-radius:8px;padding:8px 16px;flex-shrink:0;'>"
+        f"<img src='data:image/png;base64,{logo_b64}' style='height:40px;display:block;'>"
+        f"</div>"
+        f"<div style='width:2px;height:40px;background:#E6007E;opacity:0.6;flex-shrink:0;'></div>"
+    )
+else:
+    logo_html = ""
+
 st.markdown(f"""
-<div class='rl-wrap'>
-  <div class='rl-header'>
-    <h1>{event_name}</h1>
-    <p>{location}{sep}{date}</p>
+<div style="background:linear-gradient(135deg,#0D4E73,#15608A);
+            border-bottom:3px solid #E6007E;padding:16px 24px;
+            display:flex;align-items:center;gap:20px;margin-bottom:12px;">
+  {logo_html}
+  <div>
+    <div style="font-size:1.4rem;font-weight:700;color:#fff;">{event_name}</div>
+    <div style="font-size:0.9rem;color:#6FAFC9;">{location}{sep}{date}</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
