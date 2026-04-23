@@ -880,50 +880,38 @@ search = st.text_input(
     key="rl_search",
 ).strip().lower()
 
-# Tab-Navigation
-if comp_mode == "einzel":
-    nav_items = [("🤸 Einzel", "Einzel"), ("📊 Gerät", "Gerät"), ("⚡ Live", "Live"),
-                 ("📋 Startliste", "Startliste"), ("🕐 Zeitplan", "Zeitplan")]
-else:
-    nav_items = [("🏆 Teams", "Teams"), ("🤸 Einzel", "Einzel"),
-                 ("📊 Gerät", "Gerät"), ("⚡ Live", "Live"),
-                 ("📋 Startliste", "Startliste"), ("🕐 Zeitplan", "Zeitplan")]
+# ── Tab-Struktur ───────────────────────────────────────────────────────────────
+tab_rangliste, tab_startliste, tab_zeitplan = st.tabs([
+    "🏅 Rangliste", "📋 Startliste", "🕐 Zeitplan"
+])
 
-if "rl_view" not in st.session_state:
-    st.session_state.rl_view = "Einzel" if comp_mode == "einzel" else "Teams"
+with tab_rangliste:
+    if comp_mode == "einzel":
+        sub_einzel, sub_geraet, sub_live = st.tabs(["🤸 Einzel", "📊 Gerät", "⚡ Live"])
+    else:
+        sub_teams, sub_einzel, sub_geraet, sub_live = st.tabs([
+            "🏆 Teams", "🤸 Einzel", "📊 Gerät", "⚡ Live"
+        ])
+        with sub_teams:
+            _show_team_ranking(teams, athletes, score_lookup, cfg, counting, search)
 
-cols = st.columns(len(nav_items) + 1)
-for i, (label, key) in enumerate(nav_items):
-    if cols[i].button(
-        label, use_container_width=True,
-        type="primary" if st.session_state.rl_view == key else "secondary",
-    ):
-        st.session_state.rl_view = key
-        st.rerun()
-if cols[-1].button("🔄 Refresh", use_container_width=True):
-    st.rerun()
+    with sub_einzel:
+        _show_individual(athletes, score_lookup, search)
 
-view = st.session_state.rl_view
+    with sub_geraet:
+        _show_per_apparatus(all_scores, search)
 
-# Autorefresh + Realtime nur im Live-Tab
-if view == "Live":
-    _setup_realtime(cid)
-    if HAS_AUTOREFRESH:
-        st_autorefresh(interval=5000, key="live_autorefresh")
+    with sub_live:
+        _setup_realtime(cid)
+        if HAS_AUTOREFRESH:
+            st_autorefresh(interval=5000, key="live_autorefresh")
+        _show_live(cid, num_e)
 
-# View dispatchen
-if view == "Teams" and comp_mode != "einzel":
-    _show_team_ranking(teams, athletes, score_lookup, cfg, counting, search)
-elif view == "Einzel":
-    _show_individual(athletes, score_lookup, search)
-elif view == "Gerät":
-    _show_per_apparatus(all_scores, search)
-elif view == "Live":
-    _show_live(cid, num_e)
-elif view == "Startliste":
+with tab_startliste:
     start_positions = get_start_positions(cid)
     _show_startliste(start_positions, athletes, teams)
-elif view == "Zeitplan":
+
+with tab_zeitplan:
     schedule = get_schedule(cid)
     _show_zeitplan(schedule)
 
