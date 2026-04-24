@@ -886,23 +886,23 @@ sep        = " · " if location and date else ""
 logo_b64 = _load_logo_b64()
 if logo_b64:
     logo_html = (
-        f"<div style='background:#fff;border-radius:8px;padding:8px 16px;flex-shrink:0;'>"
-        f"<img src='data:image/png;base64,{logo_b64}' style='height:40px;display:block;'>"
+        f"<div style='background:#fff;border-radius:8px;padding:8px 16px;'>"
+        f"<img src='data:image/png;base64,{logo_b64}' style='height:40px;width:auto;'>"
         f"</div>"
-        f"<div style='width:2px;height:40px;background:#E6007E;opacity:0.6;flex-shrink:0;'></div>"
     )
 else:
     logo_html = ""
 
 st.markdown(f"""
 <div style="background:linear-gradient(135deg,#0D4E73,#15608A);
-            border-bottom:3px solid #E6007E;padding:16px 24px;
-            display:flex;align-items:center;gap:20px;margin-bottom:12px;">
-  {logo_html}
-  <div>
-    <div style="font-size:1.4rem;font-weight:700;color:#fff;">{event_name}</div>
-    <div style="font-size:0.9rem;color:#6FAFC9;">{location}{sep}{date}</div>
-  </div>
+border-bottom:3px solid #E6007E;padding:16px;
+display:flex;flex-direction:column;align-items:center;
+text-align:center;gap:10px;">
+    {logo_html}
+    <div>
+        <div style="font-size:1.1rem;font-weight:700;color:#fff;">{event_name}</div>
+        <div style="font-size:0.8rem;color:#6FAFC9;margin-top:4px;">{location}{sep}{date}</div>
+    </div>
 </div>""", unsafe_allow_html=True)
 
 search = st.text_input(
