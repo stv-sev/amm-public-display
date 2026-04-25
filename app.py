@@ -367,7 +367,7 @@ def _show_team_ranking(teams, athletes, score_lookup, cfg, counting, search):
     )
     sel_rot = fc2.selectbox(
         "Zwischenstand",
-        ["Alle Rotationen"] + [f"Nach Rotation {r}" for r in range(1, max_rotations + 1)],
+        [f"Nach Rotation {r}" for r in range(1, max_rotations + 1)],
         key="team_rot_filter",
     )
 
@@ -375,9 +375,7 @@ def _show_team_ranking(teams, athletes, score_lookup, cfg, counting, search):
         [t for t in teams if str(t.get("abteilung", 1)) == sel_abt]
         if sel_abt != "Alle" else teams
     )
-    num_rotations = (
-        int(sel_rot.split()[-1]) if sel_rot != "Alle Rotationen" else None
-    )
+    num_rotations = int(sel_rot.split()[-1])
     # ───────────────────────────────────────────────────────────────────────
 
     team_results = _calc_teams(teams_filtered, athletes, score_lookup, counting,
